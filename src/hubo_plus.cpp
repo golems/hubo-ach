@@ -931,6 +931,9 @@ void hubo_plus::homeAllJoints( bool send, double wait )
 
 
 // ~~~*** Kinematics ***~~~ //
+inline double min(double x, double y) { return ( x > y ) ? y : x; }
+inline double max(double x, double y) { return ( x < y ) ? y : x; }
+
 void hubo_plus::DH2HG(Eigen::Isometry3d &B, double t, double f, double r, double d)
 {
     // Convert DH parameters (standard convention) to Homogenuous transformation matrix.
@@ -1013,12 +1016,6 @@ void hubo_plus::huboArmFK(Eigen::Isometry3d &B, Vector6d &q, int side)
     B = B*hand;
     
 }
-
-inline double min(double x, double y) { return ( x > y ) ? y : x; }
-inline double max(double x, double y) { return ( x < y ) ? y : x; }
-
-
-
 
 void hubo_plus::huboArmIK(Vector6d &q, Eigen::Isometry3d B, Vector6d qPrev, int side)
 {
@@ -1265,7 +1262,7 @@ void hubo_plus::huboArmIK(Vector6d &q, Eigen::Isometry3d B, Vector6d qPrev, int 
     int minInd;
     
     for (int i = 0; i < 8; i++) {
-        for (int j=0; j < 3; j++)
+        for (int j=0; j < 6; j++)
             qDiff(j) = wrapToPi(qAll(j,i) - qPrev(j));
         qDiffSum(i) = qDiff.abs().sum();
     }
@@ -1284,6 +1281,235 @@ void hubo_plus::huboArmIK(Vector6d &q, Eigen::Isometry3d B, Vector6d qPrev, int 
     
     q = q.cwiseMin(limits.col(1)); //TODO: Put these back
     q = q.cwiseMax(limits.col(0));
+}
+
+
+void huboLegFK(Eigen::Isometry3d &B, Vector6d &q, int side) {
+    // Declarations
+    Eigen::Isometry3d neck, waist, T;
+    Eigen::MatrixXd limits(6,2);
+    Vector6d offset; offset.setZero();
+    
+    // Parameters
+    double l1 = (79.5+107)/1000.0;
+    double l2 = 88.43/1000.0;
+    double l3 = (289.47-107)/1000.0;
+    double l4 = 300.03/1000.0;
+    double l5 = 300.38/1000.0;
+    double l6 = 94.97/1000.0;
+    
+    Vector6d t, f, r, d;
+    t <<       0, -M_PI/2,       0,       0,       0,       0;
+    f <<  M_PI/2, -M_PI/2,       0,       0,  M_PI/2,       0;
+    r <<       0,       0,      l4,      l5,       0,      l6;
+    d <<       0,       0,       0,       0,       0,       0;
+    
+    neck(0,0) = 1; neck(0,1) =  0; neck(0,2) = 0; neck(0,3) =   0;
+    neck(1,0) = 0; neck(1,1) =  1; neck(1,2) = 0; neck(1,3) =   0;
+    neck(2,0) = 0; neck(2,1) =  0; neck(2,2) = 1; neck(2,3) = -l1;
+    neck(3,0) = 0; neck(3,1) =  0; neck(3,2) = 0; neck(3,3) =   1;
+    
+    if (side == 'r') {
+        waist(0,0) = 0; waist(0,1) = -1; waist(0,2) = 0; waist(0,3) =   0;
+        waist(1,0) = 1; waist(1,1) =  0; waist(1,2) = 0; waist(1,3) = -l2;
+        waist(2,0) = 0; waist(2,1) =  0; waist(2,2) = 1; waist(2,3) = -l3;
+        waist(3,0) = 0; waist(3,1) =  0; waist(3,2) = 0; waist(3,3) =   1;
+        
+        //        limits <<
+        //        -2,   2,
+        //        -2,  .2,
+        //        -2,   2,
+        //        -2,   0,
+        //        -2,   2,
+        //        -1.4, 1.2;
+        
+        // Set offsets
+        //        offset(1) = limits(1,1);
+        
+    } else {
+        waist(0,0) = 0; waist(0,1) = -1; waist(0,2) = 0; waist(0,3) =   0;
+        waist(1,0) = 1; waist(1,1) =  0; waist(1,2) = 0; waist(1,3) =  l2;
+        waist(2,0) = 0; waist(2,1) =  0; waist(2,2) = 1; waist(2,3) = -l3;
+        waist(3,0) = 0; waist(3,1) =  0; waist(3,2) = 0; waist(3,3) =   1;
+        
+        //        limits <<
+        //        -2,   2,
+        //        -.3,   2,
+        //        -2,   2,
+        //        -2,   0,
+        //        -2,   2,
+        //        -1.4, 1.2;
+        
+        // Set offsets
+        //        offset(1) = limits(1,0);
+    }
+    
+    // Calculate forward kinematics
+    B = waist*neck;
+    for (int i = 0; i < 6; i++) {
+        DH2HG(T, t(i)+q(i)+offset(i), f(i), r(i), d(i));
+        B = B*T;
+    }
+}
+
+void huboLegIK(Vector6d &q, Eigen::Isometry3d B, Vector6d qPrev, int side) {
+    Eigen::ArrayXXd qAll(6,8);
+    
+    // Declarations
+    Eigen::Isometry3d neck, neckInv, waist, waistInv, BInv;
+    Eigen::MatrixXd limits(6,2);
+    Vector6d offset; offset.setZero();
+    double nx, sx, ax, px;
+    double ny, sy, ay, py;
+    double nz, sz, az, pz;
+    double q1, q2, q3, q4, q5, q6;
+    double C45, psi, q345;
+    Eigen::Matrix<int, 8, 3> m;
+    
+    double S2, S4, S6;
+    double C2, C4, C5, C6;
+    
+    // Parameters
+    double l1 = (79.5+107)/1000.0;
+    double l2 = 88.43/1000.0;
+    double l3 = (289.47-107)/1000.0;
+    double l4 = 300.03/1000.0;
+    double l5 = 300.38/1000.0;
+    double l6 = 94.97/1000.0;
+    
+    neck(0,0) = 1; neck(0,1) =  0; neck(0,2) = 0; neck(0,3) =   0;
+    neck(1,0) = 0; neck(1,1) =  1; neck(1,2) = 0; neck(1,3) =   0;
+    neck(2,0) = 0; neck(2,1) =  0; neck(2,2) = 1; neck(2,3) = -l1;
+    neck(3,0) = 0; neck(3,1) =  0; neck(3,2) = 0; neck(3,3) =   1;
+    
+    if (side == 'r') {
+        waist(0,0) = 0; waist(0,1) = -1; waist(0,2) = 0; waist(0,3) =   0;
+        waist(1,0) = 1; waist(1,1) =  0; waist(1,2) = 0; waist(1,3) = -l2;
+        waist(2,0) = 0; waist(2,1) =  0; waist(2,2) = 1; waist(2,3) = -l3;
+        waist(3,0) = 0; waist(3,1) =  0; waist(3,2) = 0; waist(3,3) =   1;
+        
+        //        limits <<
+        //        -2,   2,
+        //        -2,  .2,
+        //        -2,   2,
+        //        -2,   0,
+        //        -2,   2,
+        //        -1.4, 1.2;
+        
+        // Set offsets
+        //        offset(1) = limits(1,1);
+        
+    } else {
+        waist(0,0) = 0; waist(0,1) = -1; waist(0,2) = 0; waist(0,3) =   0;
+        waist(1,0) = 1; waist(1,1) =  0; waist(1,2) = 0; waist(1,3) =  l2;
+        waist(2,0) = 0; waist(2,1) =  0; waist(2,2) = 1; waist(2,3) = -l3;
+        waist(3,0) = 0; waist(3,1) =  0; waist(3,2) = 0; waist(3,3) =   1;
+        
+        //        limits <<
+        //        -2,   2,
+        //        -.3,   2,
+        //        -2,   2,
+        //        -2,   0,
+        //        -2,   2,
+        //        -1.4, 1.2;
+        
+        // Set offsets
+        //        offset(1) = limits(1,0);
+    }
+    neckInv = neck.inverse();
+    waistInv = waist.inverse();
+    
+    // Variables
+    B = neckInv*waistInv*B;
+    BInv = B.inverse();
+    
+    nx = BInv(0,0); sx = BInv(0,1); ax = BInv(0,2); px = BInv(0,3);
+    ny = BInv(1,0); sy = BInv(1,1); ay = BInv(1,2); py = BInv(1,3);
+    nz = BInv(2,0); sz = BInv(2,1); az = BInv(2,2); pz = BInv(2,3);
+    
+    m <<
+    1,  1,  1,
+    1,  1, -1,
+    1, -1,  1,
+    1, -1, -1,
+    -1,  1,  1,
+    -1,  1, -1,
+    -1, -1,  1,
+    -1, -1, -1;
+    
+    for (int i = 0; i < 8; i++) {
+        C4 = ((l6 + px)*(l6 + px) - l4*l4 - l5*l5 + py*py + pz*pz)/(2*l4*l5);
+        q4 = atan2(m(i,0)*real(sqrt(1-C4*C4)),C4);
+        
+        S4 = sin(q4);
+        psi = atan2(S4*l4, C4*l4+l5);
+        q5 = wrapToPi(atan2(-pz, m(i,1)*real(sqrt((px+l6)*(px+l6)+py*py)))-psi);
+        
+        q6 = atan2(py, -px-l6);
+        C45 = cos(q4+q5);
+        C5 = cos(q5);
+        if (C45*l4 + C5*l5 < 0) {
+            q6 = wrapToPi(q6 + M_PI);
+        }
+        
+        S6 = sin(q6);
+        C6 = cos(q6);
+        
+        S2 = C6*ay + S6*ax;
+        q2 = atan2(S2,m(i,2)*real(sqrt(1-S2*S2)));
+        
+        q1 = atan2(C6*sy + S6*sx,C6*ny + S6*nx);
+        C2 = cos(q2);
+        if (C2 < 0) {
+            q1 = wrapToPi(q1 + M_PI);
+        }
+        
+        q345 = atan2(-az/C2,-(C6*ax - S6*ay)/C2);
+        q3 = wrapToPi(q345-q4-q5);
+        
+        qAll(0,i) = q1;
+        qAll(1,i) = q2;
+        qAll(2,i) = q3;
+        qAll(3,i) = q4;
+        qAll(4,i) = q5;
+        qAll(5,i) = q6;
+    }
+    
+    
+    // Find best solution
+    Eigen::ArrayXd qDiff(6,1); qDiff.setZero();
+    Eigen::ArrayXd qDiffSum(8,1);
+    int minInd;
+    
+    for (int i = 0; i < 8; i++) {
+        for (int j=0; j < 6; j++)
+            qDiff(j) = wrapToPi(qAll(j,i) - qPrev(j));
+        qDiffSum(i) = qDiff.abs().sum();
+    }
+    qDiffSum.minCoeff(&minInd);
+    
+    q = qAll.col(minInd);
+    
+    // Set to offsets
+    for (int i = 0; i < 6; i++) {
+        if (side==RIGHT) {
+            q(i) = wrapToPi(q(i) + offset(i));
+        } else {
+            q(i) = wrapToPi(q(i) + offset(i));
+        }
+    }
+    
+    // Set to offsets
+    //    for (int i = 0; i < 6; i++) {
+    //        if (side == 'r') {
+    //            q(i) = wrapToPi(q(i) - offset(i));
+    //        } else {
+    //            q(i) = wrapToPi(q(i) - offset(i));
+    //        }
+    //    }
+    
+    //    q = q.cwiseMin(limits.col(1));
+    //    q = q.cwiseMax(limits.col(0));
 }
 
 

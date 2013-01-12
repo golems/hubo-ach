@@ -275,6 +275,10 @@ public:
     
     void huboArmIK(Vector6d &q, Eigen::Isometry3d B, Vector6d qPrev, int side);
     
+    void huboLegFK(Eigen::Isometry3d &B, Vector6d &q, int side);
+    
+    void huboLegIK(Vector6d &q, Eigen::Isometry3d B, Vector6d qPrev, int side);
+    
 
 
 
