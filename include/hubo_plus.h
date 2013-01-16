@@ -281,7 +281,8 @@ public:
     
     void huboLegIK(Vector6d &q, Eigen::Isometry3d B, Vector6d qPrev, int side);
     
-
+    void HuboDrillFK(Eigen::Isometry3d &B, Vector6d &q);
+    void HuboDrillIK(Vector6d &q, double y);
 
 
     // ~~~*** Fastrak ***~~~ //

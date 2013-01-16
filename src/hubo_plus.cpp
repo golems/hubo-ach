@@ -948,14 +948,13 @@ void hubo_plus::DH2HG(Eigen::Isometry3d &B, double t, double f, double r, double
 
 
 void hubo_plus::huboArmFK(Eigen::Isometry3d &B, Vector6d &q, int side) {
-    // Hand	
-    Eigen::Isometry3d endEffector;
-    endEffector(0,0) =  1; endEffector(0,1) =  0; endEffector(0,2) = 0; endEffector(0,3) =   0;
-    endEffector(1,0) =  0; endEffector(1,1) =  0; endEffector(1,2) =-1; endEffector(1,3) =   0;
-    endEffector(2,0) =  0; endEffector(2,1) =  1; endEffector(2,2) = 0; endEffector(2,3) =   0;
-    endEffector(3,0) =  0; endEffector(3,1) =  0; endEffector(3,2) = 0; endEffector(3,3) =   1;
+    Eigen::Isometry3d hand;
+    hand(0,0) =  1; hand(0,1) =  0; hand(0,2) = 0; hand(0,3) =   0;
+    hand(1,0) =  0; hand(1,1) =  0; hand(1,2) =-1; hand(1,3) =   0;
+    hand(2,0) =  0; hand(2,1) =  1; hand(2,2) = 0; hand(2,3) =   0;
+    hand(3,0) =  0; hand(3,1) =  0; hand(3,2) = 0; hand(3,3) =   1;
     
-    huboArmFK(B, q, side, endEffector);
+    huboArmFK(B, q, side, hand);
 }
 
 void hubo_plus::huboArmFK(Eigen::Isometry3d &B, Vector6d &q, int side,  const Eigen::Isometry3d &endEffector)
@@ -1488,8 +1487,16 @@ void hubo_plus::huboLegIK(Vector6d &q, Eigen::Isometry3d B, Vector6d qPrev, int 
         qAll(5,i) = q6;
     }
     
+    // Set to offsets
+    for (int i = 0; i < 6; i++) {
+        if (side==RIGHT) {
+            q(i) = wrapToPi(q(i) + offset(i));
+        } else {
+            q(i) = wrapToPi(q(i) + offset(i));
+        }
+    }
     
-    // Find best solution
+    // Find best solution // TODO: Need to find a better way of choosing the best solution
     Eigen::ArrayXd qDiff(6,1); qDiff.setZero();
     Eigen::ArrayXd qDiffSum(8,1);
     int minInd;
@@ -1503,26 +1510,57 @@ void hubo_plus::huboLegIK(Vector6d &q, Eigen::Isometry3d B, Vector6d qPrev, int 
     
     q = qAll.col(minInd);
     
-    // Set to offsets
-    for (int i = 0; i < 6; i++) {
-        if (side==RIGHT) {
-            q(i) = wrapToPi(q(i) + offset(i));
-        } else {
-            q(i) = wrapToPi(q(i) + offset(i));
-        }
-    }
-    
-    // Set to offsets
-    //    for (int i = 0; i < 6; i++) {
-    //        if (side == 'r') {
-    //            q(i) = wrapToPi(q(i) - offset(i));
-    //        } else {
-    //            q(i) = wrapToPi(q(i) - offset(i));
-    //        }
-    //    }
-    
     //    q = q.cwiseMin(limits.col(1));
     //    q = q.cwiseMax(limits.col(0));
+}
+
+void hubo_plus::HuboDrillFK(Eigen::Isometry3d &B, Vector6d &q) {
+    Eigen::Isometry3d drill;
+    
+    double ld = 7*25.4/1000.0;
+    double ad = M_PI/4;
+    
+    drill(0,0) = cos(ad);  drill(0,1) = 0; drill(0,2) = sin(ad); drill(0,3) = ld*cos(ad);
+    drill(1,0) = 0;        drill(1,1) = 1; drill(1,2) = 0;       drill(1,3) = 0;
+    drill(2,0) = -sin(ad); drill(2,1) = 0; drill(2,2) = cos(ad); drill(2,3) = -ld*sin(ad);
+    drill(3,0) = 0;        drill(3,1) = 0; drill(3,2) = 0;       drill(3,3) = 1;
+    
+    HuboArmFK(B, q, 'r', drill);
+}
+
+void hubo_plus::HuboDrillIK(Vector6d &q, double y) {
+    Vector6d qPrev; qPrev.setZero();
+    Eigen::Isometry3d drill, B;
+    
+    double l1 = 214.5/1000;
+    double l2 = 179.14/1000;
+    double l3 = 181.59/1000;
+    double l4 = 4.75*25.4/1000;
+    double ld = 7*25.4/1000.0;
+    double ad = M_PI/4;
+    
+    drill(0,0) = cos(ad);  drill(0,1) = 0; drill(0,2) = sin(ad); drill(0,3) = ld*cos(ad);
+    drill(1,0) = 0;        drill(1,1) = 1; drill(1,2) = 0;       drill(1,3) = 0;
+    drill(2,0) = -sin(ad); drill(2,1) = 0; drill(2,2) = cos(ad); drill(2,3) = -ld*sin(ad);
+    drill(3,0) = 0;        drill(3,1) = 0; drill(3,2) = 0;       drill(3,3) = 1;
+    
+    double pyLimits[2] = {-0.2050, 0.1850};
+    
+    double px = 0.0925;
+    double py = min(max(y,pyLimits[0]),pyLimits[1]);
+    double pz = 0.04;
+    
+    double px0 = (l3+l4)*sin(M_PI/4)+ld;
+    double py0 = -l1;
+    double pz0 = (l3+l4)*cos(M_PI/4)-l2;
+    
+    B(0,0) = 1; B(0,1) = 0; B(0,2) = 0; B(0,3) = px0+px;
+    B(1,0) = 0; B(1,1) = 1; B(1,2) = 0; B(1,3) = py0+py;
+    B(2,0) = 0; B(2,1) = 0; B(2,2) = 1; B(2,3) = pz0+pz;
+    B(3,0) = 0; B(3,1) = 0; B(3,2) = 0; B(3,3) = 1;
+    
+    HuboArmIK(q, B, qPrev, 'r', drill);
+    
 }
 
 
