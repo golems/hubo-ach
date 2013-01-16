@@ -4,38 +4,40 @@
 int main(int argc, char **argv)
 {
     hubo_plus hubo;
-    hubo.initFastrak();
-    hubo.setFastrakScale( 1.0 );
+    // hubo.initFastrak();
+    // hubo.setFastrakScale( 1.0 );
 
 
-/*
+
     // Testing consistency of FK and IK
     Vector6d qprev, q0l, q0r, q0;
-    q0l << 0, 0, 0, -M_PI/2.0, 0.3, 0;
-    q0r << 0, 0, 0, 0, 0, 0;
+    q0l << .4, 0, 1, -M_PI/2.0, 0.9, 2;
+    q0r << 0, -.4, 3.14, 0, 8, .9;
     
     std::cout << "Left commands: " << q0l.transpose() << std::endl;
     std::cout << "Right commands: " << q0r.transpose() << std::endl;
     
 
-    Eigen::Matrix4d Bleft, Bright;
+    Eigen::Isometry3d Bleft, Bright;
     
 
-    //hubo.huboArmFK( Bleft, q0l, LEFT );
-    //hubo.huboArmFK( Bright, q0r, RIGHT );
+    hubo.huboArmFK( Bleft, q0l, LEFT );
+    hubo.huboArmFK( Bright, q0r, RIGHT );
 
-
+/*
     Bleft <<    0.679443,    -0.66597,    0.307964, 9.83477e-06,
    0.316599,    0.644741,    0.695755,    0.335909,
   -0.661909,   -0.375225,     0.64891,    -0.39233,
           0,           0,           0,           1;
 
     std::cout << Bleft.inverse() << std::endl;
+*/
 
     hubo.huboArmIK( q0l, (Eigen::Isometry3d)Bleft, q0l, LEFT );
+    hubo.huboArmIK( q0r, (Eigen::Isometry3d)Bright, q0r, RIGHT);
     //hubo.huboArmIK( q0r, Bright, q0r, RIGHT );
 
-    Eigen::Vector3d z(0, 0, 1);
+    // Eigen::Vector3d z(0, 0, 1);
 
     
     std::cout << "Left result: " << q0l.transpose() << std::endl;
@@ -50,11 +52,11 @@ int main(int argc, char **argv)
     std::cout << Bright.matrix() << std::endl;
 
 
-*/
 
 
 
 
+/*
 
     Vector6d q, ql, qr, q0; q.setZero(); q0.setZero();
     ql << 0, 0, 0, -M_PI/2, 0.3, 0;
@@ -127,4 +129,7 @@ int main(int argc, char **argv)
         std::cout << q.transpose() << std::endl;
 
     }
+*/
+
+
 }

@@ -946,7 +946,19 @@ void hubo_plus::DH2HG(Eigen::Isometry3d &B, double t, double f, double r, double
     
 }
 
-void hubo_plus::huboArmFK(Eigen::Isometry3d &B, Vector6d &q, int side)
+
+void hubo_plus::huboArmFK(Eigen::Isometry3d &B, Vector6d &q, int side) {
+    // Hand	
+    Eigen::Isometry3d endEffector;
+    endEffector(0,0) =  1; endEffector(0,1) =  0; endEffector(0,2) = 0; endEffector(0,3) =   0;
+    endEffector(1,0) =  0; endEffector(1,1) =  0; endEffector(1,2) =-1; endEffector(1,3) =   0;
+    endEffector(2,0) =  0; endEffector(2,1) =  1; endEffector(2,2) = 0; endEffector(2,3) =   0;
+    endEffector(3,0) =  0; endEffector(3,1) =  0; endEffector(3,2) = 0; endEffector(3,3) =   1;
+    
+    huboArmFK(B, q, side, endEffector);
+}
+
+void hubo_plus::huboArmFK(Eigen::Isometry3d &B, Vector6d &q, int side,  const Eigen::Isometry3d &endEffector)
 {
     // Declarations
     Eigen::Isometry3d neck, hand, T;
@@ -1001,29 +1013,36 @@ void hubo_plus::huboArmFK(Eigen::Isometry3d &B, Vector6d &q, int side)
         offset(1) = limits(1,0); // Note: I think this might be backwards
 //        offset(1) = -limits(1,0);
     }
-    
-    hand(0,0) =  1; hand(0,1) =  0; hand(0,2) = 0; hand(0,3) =   0;
-    hand(1,0) =  0; hand(1,1) =  0; hand(1,2) =-1; hand(1,3) =   0;
-    hand(2,0) =  0; hand(2,1) =  1; hand(2,2) = 0; hand(2,3) =   0;
-    hand(3,0) =  0; hand(3,1) =  0; hand(3,2) = 0; hand(3,3) =   1;
-    
+     
     // Calculate forward kinematics
     B = neck;
     for (int i = 0; i < 6; i++) {
         DH2HG(T, t(i)+q(i)-offset(i), f(i), r(i), d(i));
         B = B*T;
     }
-    B = B*hand;
+    B = B*endEffector;
     
 }
 
-void hubo_plus::huboArmIK(Vector6d &q, Eigen::Isometry3d B, Vector6d qPrev, int side)
+
+void hubo_plus::huboArmIK(Vector6d &q, Eigen::Isometry3d B, Vector6d qPrev, int side) {
+    // Hand	
+    Eigen::Isometry3d endEffector;
+    endEffector(0,0) =  1; endEffector(0,1) =  0; endEffector(0,2) = 0; endEffector(0,3) =   0;
+    endEffector(1,0) =  0; endEffector(1,1) =  0; endEffector(1,2) =-1; endEffector(1,3) =   0;
+    endEffector(2,0) =  0; endEffector(2,1) =  1; endEffector(2,2) = 0; endEffector(2,3) =   0;
+    endEffector(3,0) =  0; endEffector(3,1) =  0; endEffector(3,2) = 0; endEffector(3,3) =   1;
+    
+    huboArmIK(q, B, qPrev, side, endEffector);
+}
+  
+void hubo_plus::huboArmIK(Vector6d &q, Eigen::Isometry3d B, Vector6d qPrev, int side, const Eigen::Isometry3d &endEffector)
 {
     
     Eigen::ArrayXXd qAll(6,8);
     
     // Declarations
-    Eigen::Isometry3d neck, neckInv, hand, handInv, BInv;
+    Eigen::Isometry3d neck, neckInv, endEffectorInv, BInv;
     Eigen::MatrixXd limits(6,2);
     Vector6d offset; offset.setZero();
     double nx, sx, ax, px;
@@ -1081,18 +1100,12 @@ void hubo_plus::huboArmIK(Vector6d &q, Eigen::Isometry3d B, Vector6d qPrev, int 
     }
     neckInv = neck.inverse();
     
-    hand(0,0) =  1; hand(0,1) =  0; hand(0,2) = 0; hand(0,3) =   0;
-    hand(1,0) =  0; hand(1,1) =  0; hand(1,2) =-1; hand(1,3) =   0;
-    hand(2,0) =  0; hand(2,1) =  1; hand(2,2) = 0; hand(2,3) =   0;
-    hand(3,0) =  0; hand(3,1) =  0; hand(3,2) = 0; hand(3,3) =   1;
-    handInv = hand.inverse();
-
-        
+    endEffectorInv = endEffector.inverse();        
 
     double zeroSize = .000001;
     
     // Variables
-    B = neckInv*B*handInv;
+    B = neckInv*B*endEffectorInv;
     BInv = B.inverse();
     
     nx = BInv(0,0); sx = BInv(0,1); ax = BInv(0,2); px = BInv(0,3);
@@ -1284,7 +1297,7 @@ void hubo_plus::huboArmIK(Vector6d &q, Eigen::Isometry3d B, Vector6d qPrev, int 
 }
 
 
-void huboLegFK(Eigen::Isometry3d &B, Vector6d &q, int side) {
+void hubo_plus::huboLegFK(Eigen::Isometry3d &B, Vector6d &q, int side) {
     // Declarations
     Eigen::Isometry3d neck, waist, T;
     Eigen::MatrixXd limits(6,2);
@@ -1352,7 +1365,7 @@ void huboLegFK(Eigen::Isometry3d &B, Vector6d &q, int side) {
     }
 }
 
-void huboLegIK(Vector6d &q, Eigen::Isometry3d B, Vector6d qPrev, int side) {
+void hubo_plus::huboLegIK(Vector6d &q, Eigen::Isometry3d B, Vector6d qPrev, int side) {
     Eigen::ArrayXXd qAll(6,8);
     
     // Declarations
@@ -1439,11 +1452,11 @@ void huboLegIK(Vector6d &q, Eigen::Isometry3d B, Vector6d qPrev, int side) {
     
     for (int i = 0; i < 8; i++) {
         C4 = ((l6 + px)*(l6 + px) - l4*l4 - l5*l5 + py*py + pz*pz)/(2*l4*l5);
-        q4 = atan2(m(i,0)*real(sqrt(1-C4*C4)),C4);
+        q4 = atan2(m(i,0)*creal(sqrt(1-C4*C4)),C4);
         
         S4 = sin(q4);
         psi = atan2(S4*l4, C4*l4+l5);
-        q5 = wrapToPi(atan2(-pz, m(i,1)*real(sqrt((px+l6)*(px+l6)+py*py)))-psi);
+        q5 = wrapToPi(atan2(-pz, m(i,1)*creal(sqrt((px+l6)*(px+l6)+py*py)))-psi);
         
         q6 = atan2(py, -px-l6);
         C45 = cos(q4+q5);
@@ -1456,7 +1469,7 @@ void huboLegIK(Vector6d &q, Eigen::Isometry3d B, Vector6d qPrev, int side) {
         C6 = cos(q6);
         
         S2 = C6*ay + S6*ax;
-        q2 = atan2(S2,m(i,2)*real(sqrt(1-S2*S2)));
+        q2 = atan2(S2,m(i,2)*creal(sqrt(1-S2*S2)));
         
         q1 = atan2(C6*sy + S6*sx,C6*ny + S6*nx);
         C2 = cos(q2);
