@@ -2785,18 +2785,23 @@ int main(int argc, char **argv) {
     hubo_assert( ACH_OK == r, __LINE__ );
 
     // open to sim chan
-    r = ach_open(&chan_hubo_to_sim, HUBO_CHAN_VIRTUAL_TO_SIM_NAME, NULL);
-    hubo_assert( ACH_OK == r, __LINE__ );
+    if( vflag != HUBO_VIRTUAL_MODE_NONE ) 
+    {
+        r = ach_open(&chan_hubo_to_sim, HUBO_CHAN_VIRTUAL_TO_SIM_NAME, NULL);
+        hubo_assert( ACH_OK == r, __LINE__ );
 
-    // open to sim chan
-    r = ach_open(&chan_hubo_from_sim, HUBO_CHAN_VIRTUAL_FROM_SIM_NAME, NULL);
-    hubo_assert( ACH_OK == r, __LINE__ );
+        // open to sim chan
+        r = ach_open(&chan_hubo_from_sim, HUBO_CHAN_VIRTUAL_FROM_SIM_NAME, NULL);
+        hubo_assert( ACH_OK == r, __LINE__ );
+    }
 
     openAllCAN( vflag );
     ach_put(&chan_hubo_ref, &H_ref, sizeof(H_ref));
     ach_put(&chan_hubo_board_cmd, &H_cmd, sizeof(H_cmd));
     ach_put(&chan_hubo_state, &H_state, sizeof(H_state));
-    ach_put(&chan_hubo_to_sim, &H_virtual, sizeof(H_virtual));
+
+    if( vflag != HUBO_VIRTUAL_MODE_NONE )
+        ach_put(&chan_hubo_to_sim, &H_virtual, sizeof(H_virtual));
 
     // run hubo main loop
     huboLoop(&H_param, vflag);
