@@ -279,6 +279,10 @@ void huboLoop(hubo_param_t *H_param, int vflag) {
     memset( &H_state, 0, sizeof(H_state));
     memset( &H_virtual, 0, sizeof(H_virtual));
 
+    // set joint parameters for Hubo
+    setJointParams(H_param, &H_state);
+    setSensorDefaults(H_param);
+
     size_t fs;
     int r = ach_get( &chan_hubo_ref, &H_ref, sizeof(H_ref), &fs, NULL, ACH_O_LAST );
     if(ACH_OK != r) {fprintf(stderr, "Ref r = %s\n",ach_result_to_string(r));}
@@ -286,10 +290,13 @@ void huboLoop(hubo_param_t *H_param, int vflag) {
     r = ach_get( &chan_hubo_board_cmd, &H_cmd, sizeof(H_cmd), &fs, NULL, ACH_O_LAST );
     if(ACH_OK != r) {fprintf(stderr, "CMD r = %s\n",ach_result_to_string(r));}
     hubo_assert( sizeof(H_cmd) == fs, __LINE__ );
+
+    // This is worthless
+    /*
     r = ach_get( &chan_hubo_state, &H_state, sizeof(H_state), &fs, NULL, ACH_O_LAST );
     if(ACH_OK != r) {fprintf(stderr, "State r = %s\n",ach_result_to_string(r));}
     hubo_assert( sizeof(H_state) == fs, __LINE__ );
-
+    */
 
     /* Create CAN Frame */
     struct can_frame frame;
@@ -326,8 +333,11 @@ void huboLoop(hubo_param_t *H_param, int vflag) {
     /* put back on channels */
     ach_put(&chan_hubo_ref, &H_ref, sizeof(H_ref));
     ach_put(&chan_hubo_board_cmd, &H_cmd, sizeof(H_cmd));
-    ach_put(&chan_hubo_state, &H_state, sizeof(H_state));
 
+    // Note: This is being removed because its timestamp is garbage,
+    //       making it difficult for other programs to synchronize correctly
+    // ach_put(&chan_hubo_state, &H_state, sizeof(H_state));
+    
 
 /* period */
 //	int interval = 1000000000; // 1hz (1.0 sec)
@@ -414,7 +424,6 @@ void huboLoop(hubo_param_t *H_param, int vflag) {
         /* read hubo console */
         huboMessage(&H_ref, &H_ref_filter, H_param, &H_state, &H_cmd, &frame);
 
-
         /* Get all Encoder data */
         getEncAllSlow(&H_state, H_param, &frame); 
         
@@ -454,7 +463,7 @@ void huboLoop(hubo_param_t *H_param, int vflag) {
         }
 
         /* put data back in ACH channel */
-        ach_put( &chan_hubo_state, &H_state, sizeof(H_state));
+        ach_status_t r_state = ach_put( &chan_hubo_state, &H_state, sizeof(H_state));
         if(HUBO_VIRTUAL_MODE_OPENHUBO == vflag) {
             ach_put( &chan_hubo_to_sim, &H_virtual, sizeof(H_virtual));
         }
@@ -782,6 +791,23 @@ unsigned long signConvention(long _input) {
     else return (unsigned long)_input;
 }
 
+uint8_t signConventionFinger(short _input)
+{
+    unsigned char _type = 0x01;
+
+    if(_type == 0x00) // Position
+    {
+        if (_input < 0) return ((_input)&0x000000FF);
+        else return (uint8_t)_input;
+    }
+    else if(_type == 0x01) // Current
+    {
+        if (_input < 0) return (uint8_t)( ((-_input)&0x0000007F) | (1<<7) );
+        else return (uint8_t)_input;
+    }
+    else return 0x00;
+}
+
 void fSetEncRef(int jnt, hubo_state_t *s, hubo_param_t *h, struct can_frame *f)
 {
     // set ref
@@ -830,6 +856,7 @@ void fSetEncRef(int jnt, hubo_state_t *s, hubo_param_t *h, struct can_frame *f)
 			fing[4] = LF5;
 		}
 
+/*
         f->can_id = 0x01;
         f->data[0] = (uint8_t)h->joint[jnt].jmc;
         f->data[1] = (uint8_t)0x0D;
@@ -841,6 +868,15 @@ void fSetEncRef(int jnt, hubo_state_t *s, hubo_param_t *h, struct can_frame *f)
         f->data[7] = getFingerInt(s->joint[fing[4]].ref);
 
         f->can_dlc = 8;
+*/
+        int k=0;
+        for(k=0; k<5; k++)
+        {
+            f->data[k] = signConventionFinger((short)(s->joint[fing[k]].ref/0.01));
+            // 0.01 is the scale that the motor control board expects
+        }
+        f->can_dlc = 5;
+
 	}
 
 }
@@ -1675,6 +1711,9 @@ void hGotoLimitAndGoOffsetAll(hubo_ref_t *r, hubo_ref_t *r_filt, hubo_param_t *h
         else
             fprintf(stdout, " -- Joint #%d is inactive!\n\t",i);
     }
+
+    hSetControlMode( RF1, h, s, f, D_CURRENT );
+    hSetControlMode( LF1, h, s, f, D_CURRENT );
     
     ach_put( &chan_hubo_ref, r, sizeof(*r) );
 }
@@ -2860,9 +2899,6 @@ int main(int argc, char **argv) {
     memset( &H_param, 0, sizeof(H_param));
     memset( &H_virtual, 0, sizeof(H_virtual));
 
-    // set joint parameters for Hubo
-    setJointParams(&H_param, &H_state);
-    setSensorDefaults(&H_param);
 
     // open hubo reference
     int r = ach_open(&chan_hubo_ref, HUBO_CHAN_REF_NAME, NULL);
@@ -2890,7 +2926,11 @@ int main(int argc, char **argv) {
     openAllCAN( vflag );
     ach_put(&chan_hubo_ref, &H_ref, sizeof(H_ref));
     ach_put(&chan_hubo_board_cmd, &H_cmd, sizeof(H_cmd));
-    ach_put(&chan_hubo_state, &H_state, sizeof(H_state));
+
+    // Note: This has been removed because it puts a state frame
+    //       with a garbage timestamp onto the state channel, which
+    //       is annoying.
+    //ach_put(&chan_hubo_state, &H_state, sizeof(H_state));
 
     if( vflag != HUBO_VIRTUAL_MODE_NONE )
         ach_put(&chan_hubo_to_sim, &H_virtual, sizeof(H_virtual));
