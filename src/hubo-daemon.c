@@ -621,10 +621,10 @@ void refFilterMode(hubo_ref_t *r, int L, hubo_param_t *h, hubo_state_t *s, hubo_
                 break;
         }
 
-        s->joint[i].ref = f->ref[i];
+
 
         // Handle the compliance settings:
-        if( s->joint[i].comply==0 && r->comply[i]==1 && h->joint[i].numMot <= 2 )
+        if( s->joint[i].comply==0 && r->comply[i]==1 )
         {
             fprintf(stdout, "Switching joint %s to compliance mode\n", jointNames[i]);
             struct can_frame frame;
@@ -632,42 +632,20 @@ void refFilterMode(hubo_ref_t *r, int L, hubo_param_t *h, hubo_state_t *s, hubo_
             hSetNonComplementaryMode( i, h, &frame );
             s->joint[i].comply = 1;
         }
-        else if( s->joint[i].comply==1 && r->comply[i]==0 && h->joint[i].numMot <= 2 )
+        else if( s->joint[i].comply==1 && r->comply[i]==0 )
         { // TODO: Handle this transition
-            int allRigid = 0;
-            int k = 0;
-            for( k=0; k<h->joint[i].numMot; k++)
-                if(r->comply[h->driver[h->joint[i].jmc].joint[k]] == 0)
-                    allRigid++;
-
-            if( allRigid == h->joint[i].numMot )
-            {
-                for( k=0; k<h->joint[i].numMot; k++)
-                {
-                    int jnt = h->driver[h->joint[i].jmc].joint[k];
-                    s->joint[jnt].comply = 3;
-                    s->joint[jnt].ref = s->joint[jnt].pos;
-                }
-            }
+/*
+            fprintf(stdout, "WARNING: Switching joint %s from compliance to position mode is"
+                            " not current supported!!\n"
+                            " -- Complain to Grey to get this fixed\n",
+                    jointNames[i]);
+*/
         }
-        else if( s->joint[i].comply==2  &&
-                 fabs(s->joint[i].ref - r->ref[i]) > HUBO_COMP_RIGID_TRANS_THRESHOLD )
-        {
-            double F = L*HUBO_COMP_RIGID_TRANS_MULTIPLIER; 
-            s->joint[i].ref = (s->joint[i].ref * ((double)F-1.0) + r->ref[i]) / ((double)F);
-        }
-        else if( s->joint[i].comply==2  &&
-                 fabs(s->joint[i].ref - r->ref[i]) < HUBO_COMP_RIGID_TRANS_THRESHOLD )
-        {
-            s->joint[i].comply=0;
-        }
-
-            
-            // TODO: Switch rigid control on AFTER sending the latest ref
-
-            
-            // TODO: Return to normal operation (s->...comply == 0) after converging to some threshold
         
+    }
+
+    for(i = 0; i < HUBO_JOINT_COUNT; i++) {
+      s->joint[i].ref = f->ref[i];
     }
 
 }
