@@ -1127,16 +1127,6 @@ void fSetEncRef(int jnt, hubo_state_t *s, hubo_ref_t *r, hubo_param_t *h,
 */
             }
             
-            if( s->joint[m0].comply == 3 && s->joint[m1].comply == 3 )
-            {
-                struct can_frame;
-                memset(&can_frame, 0, sizeof(can_frame));
-                fEnableFeedbackController(m0, h, &can_frame);
-                sendCan(getSocket(h,m0), &can_frame);
-
-                s->joint[m0].comply = 2;
-                s->joint[m1].comply = 2;
-            }
         }
      
     }
